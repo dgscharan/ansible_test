@@ -1,0 +1,57 @@
+flowchart TB
+    subgraph FW["Shared Ingestion Framework"]
+        IR["Ingestion Repo<br/>DPS core"]
+        WHL["Versioned Wheel Files<br/>v1, v2, v3..."]
+        IR --> WHL
+    end
+
+    subgraph PROJ["Project Repo — e.g. Media Market"]
+        CFG["Source Config<br/>table + composite key + transforms to enable"]
+        DC["Data Contract<br/>DQX rules per table"]
+        GEN["Generate Resources Notebook"]
+        WHL --> GEN
+        CFG --> GEN
+        DC --> GEN
+        GEN --> DP["DP: Declarative Pipeline Definition"]
+        GEN --> WF["WF: Workflow Wrapper<br/>pipeline + audit process + tests"]
+    end
+
+    subgraph BRONZE["Bronze"]
+        SRC["Source Table<br/>CDF enabled"]
+    end
+
+    subgraph PIPE["Declarative Pipeline — runtime"]
+        TV1["Temp View<br/>reads CDF, adds source-prefixed columns"]
+        DTE["Data Transformation Engine<br/>case norm / string trim / SAP type casts"]
+        TV2["Temp View — transformed"]
+        MAT["Materialized Temp Table<br/>DQX checks applied here"]
+        CLEAN["Clean View<br/>records passing DQX rules"]
+    end
+
+    subgraph SILVER["Silver / Unity Catalog"]
+        FINAL["Final Streaming Table<br/>persisted"]
+    end
+
+    subgraph OBS["Observability — 'Lake House Ops' schema, generic per catalog"]
+        AUDIT["DPS Audit Log"]
+        DQXLOG["DQX Metric Log"]
+    end
+
+    DP -. configures .-> PIPE
+    WF -. wraps .-> PIPE
+
+    SRC --> TV1 --> DTE --> TV2 --> MAT
+    MAT -->|fails DQX| QT["Quarantine Table<br/>1 per target table"]
+    MAT --> CLEAN --> FINAL
+    MAT -. writes metrics .-> DQXLOG
+    MAT -. writes audit .-> AUDIT
+    QT -.-> GAP["Open gap: no automated reprocessing<br/>back into Silver today"]
+
+    classDef gap fill:#fff3cd,stroke:#d39e00,stroke-width:2px,stroke-dasharray: 4 4
+    class QT,GAP gap
+    classDef bronze fill:#f5d6c0,stroke:#a35f2e
+    class SRC bronze
+    classDef silver fill:#d9dee3,stroke:#5c6b73
+    class FINAL silver
+    classDef framework fill:#e6f0fa,stroke:#2c6faa
+    class IR,WHL,CFG,DC,GEN,DP,WF framework
